@@ -102,8 +102,7 @@ pipe = ExtractiveQAPipeline(reader, retriever)
 
 """Ask a question"""
 # You can configure how many candidates the reader and retriever shall return
-# The higher top_k_retriever, the better (but also the slower) the answers. 
-# Ex.: prediction = pipe.run(query="Ist mein Fahrrand mitversichert?", top_k_reader=5)
+# The higher top_k_retriever, the better (but also the slower) the answers.
 
 # -------------------------------------------------------
 question = "At what school did James Joyce teach?"
