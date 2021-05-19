@@ -1,88 +1,59 @@
+import argparse
 import glob
 import json
 import time
 
-from haystack.preprocessor.preprocessor import PreProcessor
+# from haystack.preprocessor.preprocessor import PreProcessor
 from haystack.reader.farm import FARMReader
-from haystack.reader.transformers import TransformersReader
+# from haystack.reader.transformers import TransformersReader
 from haystack.utils import print_answers
 
+# call: python3 haystack_qa_pipeline.py
+# --to_index (optional)
 
 # log the time 
 start_time = time.time()
 
-# Recommended: Start Elasticsearch using Docker
-# docker run -d -p 9200:9200 -e "discovery.type=single-node" elasticsearch:7.9.2
-# docker run -d -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:7.11.1
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--to_index",
+    action='store_true',
+    help="if given, index the document in ES"
+)
 
-# if port occupied:
-# sudo lsof -i tcp:9200 - check weather important process, if not: 
-# sudo kill -9 PID      - where PID the process ID you want to kill 
-
-# --detach , -d		Run container in background and print container ID
-# --publish , -p	Publish a container's port(s) to the host
-# --env , -e		Set environment variables
+args = parser.parse_args()
+to_index = args.to_index
 
 
-# # In Colab / No Docker environments: Start Elasticsearch from source
-# !wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.9.2-linux-x86_64.tar.gz -q
-# !tar -xzf elasticsearch-7.9.2-linux-x86_64.tar.gz
-# !chown -R daemon:daemon elasticsearch-7.9.2
+def index_docs(letter_files):
 
-# import os
-# from subprocess import Popen, PIPE, STDOUT
+    for letter_file in letter_files:
+        with open(letter_file, "r") as json_file:
+            json_file = json.load(json_file)
 
-# def my_pre_exec():
-#     os.setegid(1000)
-#     os.seteuid(1000)
+            """1. Document Store: Haystack finds answers to queries within the documents stored in a DocumentStore. """
 
-# es_server = Popen(['elasticsearch-7.9.2/bin/elasticsearch'],
-#                    stdout=PIPE, stderr=STDOUT,
-#                    preexec_fn=my_pre_exec     # Also lambda: "preexec_fn=os.setuid(1)" as daemon. 
-#                   )
-# # wait until ES has started
-# !sleep 30
-
-# """ Preprocessing of documents
-# Haystack provides a customizable pipeline for:
-#  - converting files into texts
-#  - cleaning texts
-#  - splitting texts
-#  - writing them to a Document Store
-
-# Here: apply basic cleaning functions on texts, and index them in Elasticsearch.
-# """
-
-# processor = PreProcessor(clean_empty_lines=True,
-#                          clean_whitespace=True,
-#                          clean_header_footer=True,
-#                          split_by="word",
-#                          split_length=200,
-#                          split_respect_sentence_boundary=True)
+            """
+            Start an Elasticsearch server:
+                - You can start Elasticsearch on your local machine instance using Docker. 
+                - If Docker is not readily available in your environment (eg., in Colab notebooks), 
+                then you can manually download and execute Elasticsearch from source.
+            """
+            # Write the dicts containing documents to the DB.
+            document_store.write_documents([json_file])
 
 
 # Connect to Elasticsearch and prepare index for documents
 from haystack.document_store.elasticsearch import ElasticsearchDocumentStore
 document_store = ElasticsearchDocumentStore(host="localhost", username="", password="", index="jsons_letters")
 
+
 # json_files_dir = sys.argv[1]
 data_files = r"../suchmaschinen_briefe/letters/*/json/*.json"
 letter_files = glob.glob(data_files)
 
-for letter_file in letter_files:
-    with open(letter_file, "r") as json_file:
-        json_file = json.load(json_file)
-
-        """1. Document Store: Haystack finds answers to queries within the documents stored in a DocumentStore. """
-
-        """
-        Start an Elasticsearch server:
-            - You can start Elasticsearch on your local machine instance using Docker. 
-            - If Docker is not readily available in your environment (eg., in Colab notebooks), 
-            then you can manually download and execute Elasticsearch from source.
-        """
-        # Write the dicts containing documents to the DB.
-        # document_store.write_documents([json_file])
+if to_index:
+    index_docs(letter_files)
 
 
 """ Retriever
@@ -134,9 +105,28 @@ pipe = ExtractiveQAPipeline(reader, retriever)
 # The higher top_k_retriever, the better (but also the slower) the answers. 
 # Ex.: prediction = pipe.run(query="Ist mein Fahrrand mitversichert?", top_k_reader=5)
 
-question = "Whom met James Joyce at the Liberal Club on 25 January 1903?"
+# -------------------------------------------------------
+question = "At what school did James Joyce teach?"
+# "I am an English teacher here in a Berlitz School. 
+# I have been here for sixteen months during which time I have achieved the delicate task of 
+# living and of supporting two other trusting souls on a salary of £80 a year."
+# haystack answer: It seems we can’t spend Xmas together. All good wishes from '
+                #  'us all. Thanks for yours
+
+# question = "Who offered Virginia Woolf a black kitten?"
+# correct answer: I have been offered it by Miss Power
+# haystack answer:  'answer': 'disposition (like mine!) I have been offered it by Miss '
+                  # 'Power, but my room apparently would not suit it, as it '
+                  # 'ought'
+
+# question = "Der Kampf ums Dasein heißt nach Freud?"
+# correct answer: Der ›Kampf ums Dasein‹ heißt für mich noch ein Kampf ums ›Dableiben‹
+
+# question = "Whom met James Joyce at the Liberal Club on 25 January 1903?"
 # correct answer: "I met Archer at the Liberal Club but our talk though it lasted a long time was not very business-like. 
 # I also met Lady Gregory and had just time to see Mr O’Connell before I caught my train."
+
+# -------------------------------------------------------
 
 prediction = pipe.run(query=question, top_k_retriever=5, top_k_reader=5)
 
@@ -147,4 +137,4 @@ print_answers(prediction, details="minimal")
 print()
 
 print("--- %s seconds ---" % (time.time() - start_time))
-# on average:  --- 9.938042879104614 seconds ---
+# overall run time on average:  --- between 10 and 20 seconds ---
